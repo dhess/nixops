@@ -1,6 +1,12 @@
-{ nixopsSrc ? { outPath = ./.; revCount = 0; shortRev = "abcdef"; rev = "HEAD"; }
+let
+
+  localLib = import ./lib.nix;
+
+in
+
+{ nixopsSrc ? { outPath = localLib.cleanSource ./.; revCount = 0; shortRev = "abcdef"; rev = "HEAD"; }
 , officialRelease ? false
-, nixpkgs ? <nixpkgs>
+, nixpkgs ? localLib.fetchNixPkgs
 , p ? (p: [ ])
 }:
 
