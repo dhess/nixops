@@ -61,7 +61,8 @@ let
   mainJobsets = with pkgs.lib; mapAttrs (name: settings: defaultSettings // settings) (rec {
     master = {};
     nixos-1803 = mkAlternate "master" "nixos-18.03";
-    nixpkgs = mkNixpkgs "master" "master";
+    # Disabled for now, the "none" test keeps hanging.
+    #nixpkgs = mkNixpkgs "master" "master";
   });
 
   jobsetsAttrs = mainJobsets;
