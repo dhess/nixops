@@ -5,9 +5,10 @@
 , deploymentName
 , args
 , pluginNixExprs
+, nixpkgs ? <nixpkgs>
 }:
 
-with import <nixpkgs> { inherit system; };
+with import nixpkgs { inherit system; };
 with lib;
 
 
@@ -52,7 +53,7 @@ rec {
           networks;
       in
       { name = machineName;
-        value = import <nixpkgs/nixos/lib/eval-config.nix> {
+        value = import (nixpkgs + "/nixos/lib/eval-config.nix") {
           modules =
             modules ++
             defaults ++
