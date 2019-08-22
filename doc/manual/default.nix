@@ -21,9 +21,9 @@ let
       ${pkgs.libxslt.bin or pkgs.libxslt}/bin/xsltproc \
         --stringparam revision '${revision}' \
         --stringparam program 'nixops' \
-        -o intermediate.xml ${nixpkgs}/nixos/doc/manual/options-to-docbook.xsl ${optionsXML}
+        -o intermediate.xml ${nixpkgs}/nixos/lib/make-options-doc/options-to-docbook.xsl ${optionsXML}
       ${pkgs.libxslt.bin or pkgs.libxslt}/bin/xsltproc \
-        -o $out ${nixpkgs}/nixos/doc/manual/postprocess-option-descriptions.xsl intermediate.xml
+        -o $out ${nixpkgs}/nixos/lib/make-options-doc/postprocess-option-descriptions.xsl intermediate.xml
   ''; };
 
 in (pkgs.nixosOptionsDoc or backwardsCompat) {
