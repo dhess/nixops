@@ -67,7 +67,7 @@ class Diff(object):
         the diff between definition and state then return a sorted list
         of the handlers to be called to realize the diff.
         """
-        keys = self._state.keys() + self._definition.keys()
+        keys = list(self._state.keys()) + list(self._definition.keys())
         for k in keys:
             self.eval_resource_attr_diff(k)
         for k in self.get_keys():

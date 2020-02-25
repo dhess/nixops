@@ -16,9 +16,9 @@ import subprocess
 import logging
 import atexit
 import re
-from StringIO import StringIO
+from io import StringIO
 
-devnull = open(os.devnull, "rw")
+devnull = open(os.devnull, "r+")
 
 
 def check_wait(test, initial=10, factor=1, max_tries=60, exception=True):
@@ -124,7 +124,7 @@ def logged_exec(
         make_non_blocking(fd)
 
     at_new_line = True
-    stdout = ""
+    stdout = b""
 
     while len(fds) > 0:
         # The timeout/poll is to deal with processes (like
@@ -137,20 +137,20 @@ def logged_exec(
             break
         if capture_stdout and process.stdout in r:
             data = process.stdout.read()
-            if data == "":
+            if data == b"":
                 fds.remove(process.stdout)
             else:
                 stdout += data
         if log_fd in r:
             data = log_fd.read()
-            if data == "":
+            if data == b"":
                 if not at_new_line:
                     logger.log_end("")
                 fds.remove(log_fd)
             else:
                 start = 0
                 while start < len(data):
-                    end = data.find("\n", start)
+                    end = data.find(b"\n", start)
                     if end == -1:
                         logger.log_start(data[start:])
                         at_new_line = False
@@ -172,7 +172,7 @@ def logged_exec(
         err = msg.format(command, logger.machine_name)
         raise CommandFailed(err, res)
 
-    return stdout if capture_stdout else res
+    return stdout.decode() if capture_stdout else res
 
 
 def generate_random_string(length=256):
@@ -357,6 +357,9 @@ class TeeStderr(StringIO):
     def isatty(self):
         return self.stderr.isatty()
 
+    def flush(self):
+        return self.stderr.flush()
+
 
 class TeeStdout(StringIO):
     stdout = None
@@ -372,7 +375,8 @@ class TeeStdout(StringIO):
 
     def write(self, data):
         self.stdout.write(data)
-        for l in data.split("\n"):
+        bytesified = data if isinstance(data, bytes) else data.encode("utf-8")
+        for l in bytesified.split(b"\n"):
             self.logger.info(l)
 
     def fileno(self):
@@ -380,6 +384,9 @@ class TeeStdout(StringIO):
 
     def isatty(self):
         return self.stdout.isatty()
+
+    def flush(self):
+        return self.stdout.flush()
 
 
 # Borrowed from http://stackoverflow.com/questions/377017/test-if-executable-exists-in-python.

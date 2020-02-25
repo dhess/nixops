@@ -24,13 +24,16 @@ class Logger(object):
         return self._log_file.isatty()
 
     def log(self, msg):
+        msg = msg if isinstance(msg, str) else msg.decode("utf-8")
         with self._log_lock:
             if self._last_log_prefix is not None:
                 self._log_file.write("\n")
                 self._last_log_prefix = None
             self._log_file.write(msg + "\n")
+            self._log_file.flush()
 
     def log_start(self, prefix, msg):
+        msg = msg if isinstance(msg, str) else msg.decode("utf-8")
         with self._log_lock:
             if self._last_log_prefix != prefix:
                 if self._last_log_prefix is not None:
@@ -38,8 +41,10 @@ class Logger(object):
                 self._log_file.write(prefix)
             self._log_file.write(msg)
             self._last_log_prefix = prefix
+            self._log_file.flush()
 
     def log_end(self, prefix, msg):
+        msg = msg if isinstance(msg, str) else msg.decode("utf-8")
         with self._log_lock:
             last = self._last_log_prefix
             self._last_log_prefix = None
@@ -50,6 +55,7 @@ class Logger(object):
                     return
                 self._log_file.write(prefix)
             self._log_file.write(msg + "\n")
+            self._log_file.flush()
 
     def get_logger_for(self, machine_name):
         """
@@ -73,9 +79,11 @@ class Logger(object):
             ml.update_log_prefix(max_len)
 
     def warn(self, msg):
+        msg = msg if isinstance(msg, str) else msg.decode("utf-8")
         self.log(ansi_warn("warning: " + msg, outfile=self._log_file))
 
     def error(self, msg):
+        msg = msg if isinstance(msg, str) else msg.decode("utf-8")
         self.log(ansi_error("error: " + msg, outfile=self._log_file))
 
     def confirm_once(self, question):
@@ -89,8 +97,10 @@ class Logger(object):
                     "warning: {0} (y/N) ".format(question), outfile=self._log_file
                 )
             )
+            self._log_file.flush()
             if self._auto_response is not None:
                 self._log_file.write("{0}\n".format(self._auto_response))
+                self._log_file.flush()
                 return self._auto_response == "y"
             response = sys.stdin.readline()
             if response == "":
@@ -130,7 +140,9 @@ class MachineLogger(object):
             )
 
     def log(self, msg):
-        self.main_logger.log(self._log_prefix + msg)
+        self.main_logger.log(
+            self._log_prefix + (msg if isinstance(msg, str) else msg.decode("utf-8"))
+        )
 
     def log_start(self, msg):
         self.main_logger.log_start(self._log_prefix, msg)

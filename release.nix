@@ -14,6 +14,8 @@ let
   pkgs = import nixpkgs { config = {}; overlays = []; };
   version = "1.8" + (if officialRelease then "" else "pre${toString nixopsSrc.revCount}_${nixopsSrc.shortRev}");
 
+
+in rec {
   allPlugins = let
     plugins = let
       allPluginVers = import ./data.nix;
@@ -25,10 +27,9 @@ let
       srcDrv = v: (fetch v) + "/release.nix";
     in self: let
       rawPlugins = (builtins.mapAttrs (n: v: self.callPackage (srcDrv allPluginVers.${n}) {}) allPluginVers);
-    in rawPlugins // { inherit nixpkgs; };
+    in rawPlugins // { inherit nixpkgs; nixops = buildWithNoPlugins; };
   in pkgs.lib.makeScope pkgs.newScope plugins;
 
-in rec {
 
   tarball = pkgs.releaseTools.sourceTarball {
     name = "nixops-tarball";
@@ -70,26 +71,27 @@ in rec {
       '';
   };
 
-  build = pkgs.lib.genAttrs [ "x86_64-linux" "i686-linux" "x86_64-darwin" ] (system:
+  build = buildWithPlugins p;
+  buildWithNoPlugins = buildWithPlugins (_: []);
+  buildWithPlugins = pluginSet: pkgs.lib.genAttrs [ "x86_64-linux" "i686-linux" "x86_64-darwin" ] (system:
     with import nixpkgs { inherit system; };
 
 
-    python2Packages.buildPythonApplication rec {
+    python3Packages.buildPythonApplication rec {
       name = "nixops-${version}";
 
       src = "${tarball}/tarballs/*.tar.bz2";
 
-      buildInputs = [ python2Packages.nose python2Packages.coverage ];
+      buildInputs = [ python3Packages.nose python3Packages.coverage ];
 
       nativeBuildInputs = [ pkgs.mypy ];
 
-      propagatedBuildInputs = with python2Packages;
+      propagatedBuildInputs = with python3Packages;
         [ prettytable
-          # Go back to sqlite once Python 2.7.13 is released
-          pysqlite
-          typing
           pluggy
-        ] ++ pkgs.lib.traceValFn (x: "Using plugins: " + builtins.toJSON x) (map (d: d.build.${system}) (p allPlugins));
+        ] ++ pkgs.lib.traceValFn
+           (x: "Using plugins: " + builtins.toJSON x)
+           (map (d: d.build.${system}) (pluginSet allPlugins));
 
 
       # For "nix-build --run-env".
@@ -101,9 +103,6 @@ in rec {
       doCheck = true;
 
       postCheck = ''
-        # We have to unset PYTHONPATH here since it will pick enum34 which collides
-        # with python3 own module. This can be removed when nixops is ported to python3.
-        PYTHONPATH= mypy --cache-dir=/dev/null nixops
         # smoke test
         HOME=$TMPDIR $out/bin/nixops --version
       '';
