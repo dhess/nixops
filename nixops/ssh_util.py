@@ -8,6 +8,7 @@ import time
 import weakref
 from tempfile import mkdtemp
 import nixops.util
+from typing import Dict, Any, Optional, Callable, List
 
 __all__ = ["SSHConnectionFailed", "SSHCommandFailed", "SSH"]
 
@@ -28,7 +29,7 @@ class SSHMaster(object):
         self._control_socket = self._tempdir + "/master-socket"
         self._ssh_target = target
         pass_prompts = 0 if "-i" in ssh_flags and user is None else 3
-        kwargs = {}
+        kwargs: Dict[str, Any] = {}
 
         if passwd is not None:
             self._askpass_helper = self._make_askpass_helper()
@@ -63,7 +64,7 @@ class SSHMaster(object):
             + ssh_flags
         )
 
-        res = nixops.util.logged_exec(cmd, logger, check=False, **kwargs)
+        res = nixops.util.logged_exec(cmd, logger, **kwargs)
         if res != 0:
             raise SSHConnectionFailed(
                 "unable to start SSH master connection to " "‘{0}’".format(target)
@@ -103,7 +104,7 @@ class SSHMaster(object):
         the environment variable NIXOPS_SSH_PASSWORD.
         """
         path = os.path.join(self._tempdir, "nixops-askpass-helper")
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0700)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o700)
         os.write(
             fd,
             """#!{0}
@@ -111,7 +112,7 @@ import sys
 import os
 sys.stdout.write(os.environ['NIXOPS_SSH_PASSWORD'])""".format(
                 sys.executable
-            ),
+            ).encode(),
         )
         os.close(fd)
         return path
@@ -127,7 +128,6 @@ sys.stdout.write(os.environ['NIXOPS_SSH_PASSWORD'])""".format(
             ["ssh", self._ssh_target, "-S", self._control_socket, "-O", "exit"],
             stderr=nixops.util.devnull,
         )
-        self._tempdir = None
 
     def __del__(self):
         self.shutdown()
@@ -139,14 +139,14 @@ class SSH(object):
         Initialize a SSH object with the specified Logger instance, which will
         be used to write SSH output to.
         """
-        self._flag_fun = lambda: []
-        self._host_fun = None
-        self._passwd_fun = lambda: None
+        self._flag_fun: Callable[[], List[str]] = lambda: []
+        self._host_fun: Optional[Callable[[], str]] = None
+        self._passwd_fun: Callable[[], Optional[str]] = lambda: None
         self._logger = logger
-        self._ssh_master = None
+        self._ssh_master: Optional[SSHMaster] = None
         self._compress = False
 
-    def register_host_fun(self, host_fun):
+    def register_host_fun(self, host_fun: Callable[[], str]):
         """
         Register a function which returns the hostname or IP to connect to. The
         function has to require no arguments.
@@ -158,7 +158,7 @@ class SSH(object):
             raise AssertionError("don't know which SSH host to connect to")
         return "{0}@{1}".format("root" if user is None else user, self._host_fun())
 
-    def register_flag_fun(self, flag_fun):
+    def register_flag_fun(self, flag_fun: Callable[[], List[str]]):
         """
         Register a function that is used for obtaining additional SSH flags.
         The function has to require no arguments and should return a list of
@@ -169,7 +169,7 @@ class SSH(object):
     def _get_flags(self):
         return self._flag_fun()
 
-    def register_passwd_fun(self, passwd_fun):
+    def register_passwd_fun(self, passwd_fun: Callable[[], Optional[str]]):
         """
         Register a function that returns either a string or None and requires
         no arguments. If the return value is a string, the returned string is
@@ -207,7 +207,9 @@ class SSH(object):
             flags = flags + ["-o", "ConnectTimeout={0}".format(timeout)]
             tries = 1
 
-        if self._host_fun() == "localhost":
+        if self._host_fun is None:
+            raise AssertionError("don't know which SSH host to connect to")
+        elif self._host_fun() == "localhost":
             tries = 1
 
         sleep_time = 1
@@ -268,7 +270,7 @@ class SSH(object):
         Helper method for run_command, which essentially prepares and properly
         escape the command. See run_command() for further description.
         """
-        if isinstance(command, basestring):
+        if isinstance(command, str):
             if allow_ssh_args:
                 return shlex.split(command)
             else:

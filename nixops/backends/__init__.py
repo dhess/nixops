@@ -3,7 +3,7 @@
 import os
 import re
 import subprocess
-
+from typing import Dict, Any
 import nixops.util
 import nixops.resources
 import nixops.ssh_util
@@ -208,6 +208,10 @@ class MachineState(nixops.resources.ResourceState):
             "don't know how to remove a backup for machine ‘{0}’".format(self.name)
         )
 
+    def get_backups(self) -> Dict[str, Dict[str, Any]]:
+        self.warn("don't know how to list backups for ‘{0}’".format(self.name))
+        return {}
+
     def backup(self, defn, backup_id):
         """Make backup of persistent disks, if possible."""
         self.warn(
@@ -371,7 +375,7 @@ class MachineState(nixops.resources.ResourceState):
 
     def write_ssh_private_key(self, private_key):
         key_file = "{0}/id_nixops-{1}".format(self.depl.tempdir, self.name)
-        with os.fdopen(os.open(key_file, os.O_CREAT | os.O_WRONLY, 0600), "w") as f:
+        with os.fdopen(os.open(key_file, os.O_CREAT | os.O_WRONLY, 0o600), "w") as f:
             f.write(private_key)
         self._ssh_private_key_file = key_file
         return key_file

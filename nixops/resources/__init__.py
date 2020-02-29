@@ -2,7 +2,8 @@
 
 import re
 import nixops.util
-
+from threading import Event
+from typing import List, Optional
 from nixops.state import StateDict
 from nixops.diff import Diff, Handler
 
@@ -35,6 +36,8 @@ class ResourceDefinition(object):
 class ResourceState(object):
     """Base class for NixOps resource state objects."""
 
+    name: str
+
     @classmethod
     def get_type(cls):
         """A resource type identifier that must match the corresponding ResourceDefinition classs"""
@@ -58,7 +61,11 @@ class ResourceState(object):
     # Time (in Unix epoch) the resource was created.
     creation_time = nixops.util.attr_property("creationTime", None, int)
 
-    def __init__(self, depl, name, id):
+    _created_event: Optional[Event]
+    _destroyed_event: Optional[Event]
+    _errored: Optional[bool]
+
+    def __init__(self, depl, name: str, id):
         self.depl = depl
         self.name = name
         self.id = id
@@ -69,7 +76,7 @@ class ResourceState(object):
         """Update machine attributes in the state file."""
         with self.depl._db:
             c = self.depl._db.cursor()
-            for n, v in attrs.iteritems():
+            for n, v in attrs.items():
                 if v == None:
                     c.execute(
                         "delete from ResourceAttrs where machine = ? and name = ?",
@@ -121,7 +128,7 @@ class ResourceState(object):
     def import_(self, attrs):
         """Import the resource from another database"""
         with self.depl._db:
-            for k, v in attrs.iteritems():
+            for k, v in attrs.items():
                 if k == "type":
                     continue
                 self._set_attr(k, v)
@@ -234,6 +241,8 @@ class ResourceState(object):
 
 
 class DiffEngineResourceState(ResourceState):
+    _reserved_keys: List[str] = []
+
     def __init__(self, depl, name, id):
         nixops.resources.ResourceState.__init__(self, depl, name, id)
         self._state = StateDict(depl, id)
