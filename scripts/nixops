@@ -1,4 +1,4 @@
-#! /usr/bin/env python2
+#! /usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 from nixops import deployment
@@ -10,7 +10,7 @@ from nixops.script_defs import *
 parser = argparse.ArgumentParser(description='NixOS cloud deployment tool', prog='nixops')
 parser.add_argument('--version', action='version', version='NixOps @version@')
 
-subparsers = parser.add_subparsers(help='sub-command help')
+subparsers = parser.add_subparsers(help='sub-command help', metavar="operation", required=True)
 
 subparser = add_subparser(subparsers, 'list', help='list all known deployments')
 subparser.set_defaults(op=op_list_deployments)
@@ -59,6 +59,7 @@ subparser.set_defaults(op=op_deploy)
 subparser.add_argument('--kill-obsolete', '-k', action='store_true', help='kill obsolete virtual machines')
 subparser.add_argument('--dry-run', action='store_true', help='evaluate and print what would be built')
 subparser.add_argument('--dry-activate', action='store_true', help='show what will be activated on the machines in the network')
+subparser.add_argument('--test', action='store_true', help='build and activate the new configuration; do not enable it in the bootloader. Rebooting the system will roll back automatically.')
 subparser.add_argument('--repair', action='store_true', help='use --repair when calling nix-build (slow)')
 subparser.add_argument('--evaluate-only', action='store_true', help='only call nix-instantiate and exit')
 subparser.add_argument('--plan-only', action='store_true', help='show the diff between the configuration and the state and exit')
