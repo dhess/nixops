@@ -1,0 +1,62 @@
+name: CI
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "**" ]
+jobs:
+  parsing:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Nix
+        uses: cachix/install-nix-action@v8
+      - name: Parsing
+        run: 'find . -name "*.nix" -exec nix-instantiate --parse --quiet {} >/dev/null +'
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Nix
+        uses: cachix/install-nix-action@v8
+      - name: Build
+        run: 'nix-build --quiet release.nix -A build.x86_64-linux -I nixpkgs=channel:19.09'
+  black:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Nix
+        uses: cachix/install-nix-action@v8
+      - name: Black
+        run: 'nix-shell --run "black . --check --diff"'
+  mypy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Nix
+        uses: cachix/install-nix-action@v8
+      - name: Mypy
+        run: 'nix-shell --run "mypy nixops"'
+  mypy-ratchet:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Nix
+        uses: cachix/install-nix-action@v8
+      - name: Mypy Ratchet
+        run: './ci/mypy-ratchet.sh'
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Nix
+        uses: cachix/install-nix-action@v8
+      - name: Coverage
+        run: |
+          nix-shell --exclude tarball --run "./coverage-tests.py -a '!libvirtd,!gce,!ec2,!azure' -v"

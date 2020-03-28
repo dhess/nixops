@@ -16,7 +16,7 @@ import subprocess
 import logging
 import atexit
 import re
-from typing import Callable, List, Optional, Any, IO, Union, Mapping, TextIO
+from typing import Callable, List, Optional, Any, IO, Union, Mapping, TextIO, Tuple
 
 # the following ansi_ imports are for backwards compatability. They
 # would belong fine in this util.py, but having them in util.py
@@ -51,7 +51,7 @@ def check_wait(
 
 
 class CommandFailed(Exception):
-    def __init__(self, message: str, exitcode: int):
+    def __init__(self, message: str, exitcode: int) -> None:
         self.message = message
         self.exitcode = exitcode
 
@@ -92,6 +92,7 @@ def logged_exec(
     else:
         passed_stdin = devnull
 
+    fds: List[IO[str]] = []
     if capture_stdout:
         process = subprocess.Popen(
             command,
@@ -102,8 +103,8 @@ def logged_exec(
             preexec_fn=preexec_fn,
             text=True,
         )
-        fds = [process.stdout, process.stderr]
-        log_fd = process.stderr
+        fds = [fd for fd in [process.stdout, process.stderr] if fd]
+        log_fd_opt = process.stderr
     else:
         process = subprocess.Popen(
             command,
@@ -114,8 +115,21 @@ def logged_exec(
             preexec_fn=preexec_fn,
             text=True,
         )
-        fds = [process.stdout]
-        log_fd = process.stdout
+        if process.stdout:
+            fds = [process.stdout]
+        log_fd_opt = process.stdout
+
+    if process.stdin is None:
+        raise ValueError("process.stdin was None")
+    process_stdin: IO[str] = process.stdin
+
+    if process.stdout is None:
+        raise ValueError("process.stdout was None")
+    process_stdout: IO[str] = process.stdout
+
+    if log_fd_opt is None:
+        raise ValueError("log_fd was None")
+    log_fd: IO[str] = log_fd_opt
 
     # FIXME: this can deadlock if stdin_string doesn't fit in the
     # kernel pipe buffer.
@@ -202,7 +216,7 @@ def generate_random_string(length=256) -> str:
     return base64.b64encode(s).decode()
 
 
-def make_non_blocking(fd: IO[Any]):
+def make_non_blocking(fd: IO[Any]) -> None:
     fcntl.fcntl(fd, fcntl.F_SETFL, fcntl.fcntl(fd, fcntl.F_GETFL) | os.O_NONBLOCK)
 
 
@@ -243,7 +257,7 @@ def wait_for_tcp_port(
     timeout: int = -1,
     open: bool = True,
     callback: Optional[Callable[[], Any]] = None,
-):
+) -> bool:
     """Wait until the specified TCP port is open or closed."""
     n = 0
     while True:
@@ -270,7 +284,7 @@ def _maybe_abspath(s: str) -> str:
     return os.path.abspath(s)
 
 
-def abs_nix_path(x):
+def abs_nix_path(x: str) -> str:
     xs = x.split("=", 1)
     if len(xs) == 1:
         return _maybe_abspath(x)
@@ -319,7 +333,9 @@ def attr_property(name: str, default: Any, type: Optional[Any] = str) -> Any:
     return property(get, set)
 
 
-def create_key_pair(key_name="NixOps auto-generated key", type="ed25519"):
+def create_key_pair(
+    key_name="NixOps auto-generated key", type="ed25519"
+) -> Tuple[str, str]:
     key_dir = tempfile.mkdtemp(prefix="nixops-key-tmp")
     res = subprocess.call(
         ["ssh-keygen", "-t", type, "-f", key_dir + "/key", "-N", "", "-C", key_name],
@@ -327,41 +343,40 @@ def create_key_pair(key_name="NixOps auto-generated key", type="ed25519"):
     )
     if res != 0:
         raise Exception("unable to generate an SSH key")
-    f = open(key_dir + "/key")
-    private = f.read()
-    f.close()
-    f = open(key_dir + "/key.pub")
-    public = f.read().rstrip()
-    f.close()
+    with open(key_dir + "/key") as f:
+        private = f.read()
+    with open(key_dir + "/key.pub") as f:
+        public = f.read().rstrip()
     shutil.rmtree(key_dir)
     return (private, public)
 
 
 class SelfDeletingDir(str):
-    def __init__(self, s: str):
+    def __init__(self, s: str) -> None:
         str.__init__(s)
         atexit.register(self._delete)
 
-    def _delete(self):
+    def _delete(self) -> None:
         shutil.rmtree(self)
 
 
 class TeeStderr(StringIO):
     stderr: TextIO
 
-    def __init__(self):
+    def __init__(self) -> None:
         StringIO.__init__(self)
         self.stderr = sys.stderr
         self.logger = logging.getLogger("root")
         sys.stderr = self
 
-    def __del__(self):
+    def __del__(self) -> None:
         sys.stderr = self.stderr
 
-    def write(self, data):
-        self.stderr.write(data)
+    def write(self, data) -> int:
+        ret = self.stderr.write(data)
         for l in data.split("\n"):
             self.logger.warning(l)
+        return ret
 
     def fileno(self) -> int:
         return self.stderr.fileno()
@@ -369,26 +384,27 @@ class TeeStderr(StringIO):
     def isatty(self) -> bool:
         return self.stderr.isatty()
 
-    def flush(self):
+    def flush(self) -> None:
         return self.stderr.flush()
 
 
 class TeeStdout(StringIO):
     stdout: TextIO
 
-    def __init__(self):
+    def __init__(self) -> None:
         StringIO.__init__(self)
         self.stdout = sys.stdout
         self.logger = logging.getLogger("root")
         sys.stdout = self
 
-    def __del__(self):
+    def __del__(self) -> None:
         sys.stdout = self.stdout
 
-    def write(self, data):
-        self.stdout.write(data)
+    def write(self, data) -> int:
+        ret = self.stdout.write(data)
         for l in data.split("\n"):
             self.logger.info(l)
+        return ret
 
     def fileno(self) -> int:
         return self.stdout.fileno()
@@ -396,7 +412,7 @@ class TeeStdout(StringIO):
     def isatty(self) -> bool:
         return self.stdout.isatty()
 
-    def flush(self):
+    def flush(self) -> None:
         return self.stdout.flush()
 
 
@@ -425,10 +441,9 @@ def enum(**enums):
     return type("Enum", (), enums)
 
 
-def write_file(path: str, contents: str):
-    f = open(path, "w")
-    f.write(contents)
-    f.close()
+def write_file(path: str, contents: str) -> None:
+    with open(path, "w") as f:
+        f.write(contents)
 
 
 def xml_expr_to_python(node):

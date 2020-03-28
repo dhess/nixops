@@ -4,23 +4,27 @@ import queue
 import random
 import traceback
 import types
-from typing import TypeVar, List, Iterable, Callable, Tuple, Optional, Type, Any
+from typing import Dict, TypeVar, List, Iterable, Callable, Tuple, Optional, Type, Any
 
 
 class MultipleExceptions(Exception):
-    def __init__(self, exceptions={}):
+    exceptions: Dict[str, BaseException]
+
+    def __init__(self, exceptions: Dict[str, BaseException] = {}) -> None:
         self.exceptions = exceptions
 
-    def __str__(self):
+    def __str__(self) -> str:
         err = "Multiple exceptions (" + str(len(self.exceptions)) + "): \n"
         for r in sorted(self.exceptions.keys()):
-            err += "  * {}: {}\n".format(r, self.exceptions[r][1])
+            err += "  * {}: {}\n".format(r, self.exceptions[r])
         return err
 
-    def print_all_backtraces(self):
+    def print_all_backtraces(self) -> None:
         for k, e in self.exceptions.items():
             sys.stderr.write("-" * 30 + "\n")
-            traceback.print_exception(e[0], e[1], e[2])
+            for l in traceback.format_exception(type(e), e, e.__traceback__):
+                sys.stderr.write(l)
+            sys.stderr.flush()
 
 
 # Once we're using Python 3.8, use this instead of the Any
@@ -28,21 +32,19 @@ class MultipleExceptions(Exception):
 #    name: st
 Task = Any
 Result = TypeVar("Result")
-ExcInfo = Tuple[Type[BaseException], BaseException, types.TracebackType]
 
 WorkerResult = Tuple[
     Optional[Result],  # Result of the execution, None if there is an Exception
-    Optional[ExcInfo],  # Optional Exception information
+    Optional[BaseException],  # Optional Exception information
     str,  # The result of `task.name`
 ]
-FinalResult = List[Optional[Result]]
 
 
 def run_tasks(
     nr_workers: int, tasks: Iterable[Task], worker_fun: Callable[[Task], Result]
-) -> FinalResult:
+) -> List[Result]:
     task_queue: queue.Queue[Task] = queue.Queue()
-    result_queue: queue.Queue[WorkerResult] = queue.Queue()
+    result_queue: queue.Queue[WorkerResult[Result]] = queue.Queue()
 
     nr_tasks = 0
     for t in tasks:
@@ -57,7 +59,7 @@ def run_tasks(
     if nr_workers < 1:
         raise Exception("number of worker threads must be at least 1")
 
-    def thread_fun():
+    def thread_fun() -> None:
         n = 0
         while True:
             try:
@@ -65,19 +67,11 @@ def run_tasks(
             except queue.Empty:
                 break
             n = n + 1
-            work_result: WorkerResult
+            work_result: WorkerResult[Result]
             try:
                 work_result = (worker_fun(t), None, t.name)
             except Exception as e:
-                info = sys.exc_info()
-                if info[0] is None:
-                    # impossible; would only be None if we're not
-                    # handling an exception ... and we are...
-                    # but we have to do this anyway, to avoid
-                    # propogating this bad API throughout NixOps.
-                    work_result = (None, None, t.name)
-                else:
-                    work_result = (None, info, t.name)
+                work_result = (None, e, t.name)
 
             result_queue.put(work_result)
         # sys.stderr.write("thread {0} did {1} tasks\n".format(threading.current_thread(), n))
@@ -89,26 +83,29 @@ def run_tasks(
         thr.start()
         threads.append(thr)
 
-    results: FinalResult = []
+    results: List[Result] = []
     exceptions = {}
-    while len(results) < nr_tasks:
+    found_results: int = 0
+    while found_results < nr_tasks:
         try:
             # Use a timeout to allow keyboard interrupts to be
             # processed.  The actual timeout value doesn't matter.
-            result: WorkerResult = result_queue.get(True, 1000)
-            (res, excinfo, name) = result
+            result: WorkerResult[Result] = result_queue.get(True, 1000)
+            found_results += 1
+            (res, exc, name) = result
         except queue.Empty:
             continue
-        if excinfo:
-            exceptions[name] = excinfo
-        results.append(res)
+
+        if exc:
+            exceptions[name] = exc
+        if res:
+            results.append(res)
 
     for thr in threads:
         thr.join()
 
     if len(exceptions) == 1:
-        excinfo = exceptions[next(iter(exceptions.keys()))]
-        raise excinfo[0](excinfo[1]).with_traceback(excinfo[2])
+        raise list(exceptions.values())[0]
 
     if len(exceptions) > 1:
         raise MultipleExceptions(exceptions)
